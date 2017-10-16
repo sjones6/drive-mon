@@ -1,5 +1,5 @@
 {
-  "name": "mongo-node-fp",
+  "name": "drive-mon",
   "version": "0.0.0",
   "description": "A mongo driver for Node",
   "main": "index.js",
