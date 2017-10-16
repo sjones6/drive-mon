@@ -1,0 +1,20 @@
+{
+  "name": "mongo-node-fp",
+  "version": "0.0.0",
+  "description": "A mongo driver for Node",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "prettier": "node ./node_modules/.bin/prettier --config ./.prettierrc --write \"src/**/*.js\""
+  },
+  "author": "sjones6",
+  "license": "MIT",
+  "dependencies": {
+    "bson": "^1.0.4",
+    "parse-mongo-url": "^1.1.1"
+  },
+  "devDependencies": {
+    "mocha": "^4.0.1",
+    "prettier": "^1.7.4"
+  }
+}
