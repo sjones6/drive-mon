@@ -1,73 +1,65 @@
 const { createConnection } = require('net')
-const makeQueue = require('../queue')
+const parse = require('parse-mongo-url')
 
-const range = x => Array.apply(null, Array(x)).map((_, i) => i)
+const { curry, range, queue } = require('../utils')
+const makeConnection = require('./makeConnection')
+const makeTunnel = require('./tunnel')
+const makeAllocator = require('./allocator')
+const makeLazy = require('./makeLazy')
+const makeLazyConnector = require('./makeLazyConnector')
+const makeConnectionId = require('./makeConnectionId')
 
-module.exports = opt => {
-    const queue = makeQueue()
+module.exports = ({ opt, url }) => {
+    let free = null
 
-    const allocations = {}
+    const q = queue()
     const pool = {}
-    const poolSize = parseInt(opt.pool) || 1
+    const allocations = {}
+    const urlOpt = parse(url)
+    const makeId = makeConnectionId(Date.now())
+    const poolSize = Math.max(1, parseInt(typeof opt.pool === 'number' ? opt.pool : 1))
 
-    const pipeOut = (id, data) => {
+    // tunnel for responses
+    const allocator = curry(makeAllocator)(opt, pool, allocations, q, id => {
         if (allocations[id]) {
-            allocations[id].call(null, data)
+            allocations[id].cb.call(null, new Error('Request timed out'))
             delete allocations[id]
-            pool[id].free = true
+            q.length ? allocator(id) : (pool[id].free = free = Boolean(id))
         }
+    })
+    const done = id => (q.length ? allocator(id) : (pool[id].free = free = Boolean(id)))
+    const tunnel = curry(makeTunnel)(allocations, done)
 
-        if (queue.length) {
-            attemptAllocation()
-        }
+    // pool
+    const makeContext = curry(makeConnection)(urlOpt.servers[0], makeId, tunnel, createConnection)
+    if (opt.eager) {
+        range(poolSize)
+            .map(makeContext)
+            .reduce((acc, ctx) => (acc[ctx.id] = ctx && ctx), pool)
     }
 
-    //if (opt.eager) {
-        range(5).forEach(i => {
-            const id = `${Date.now()}_${i}`
-            const connection = createConnection(opt)
-            const details = {
-                id,
-                ready: false,
-                free: false,
-                connection
-            }
-            connection.on('connect', () => {
-                details.ready = true
-                details.free = true
-            })
-            connection.on('data', data => pipeOut(id, data))
-            pool[id] = details
-        })
-    //}
-
-    const allocateNext = id => {
-        var job = queue.shift()
-        pool[id].free = false
-        allocations[id] = job.res
-        job.req(pool[id].connection)
-    }
-
-    const attemptAllocation = () => {
-        return Object.keys(pool).reduce((allocated, id) => {
-            if (!allocated && pool[id].free) {
-                allocateNext(id)
-                return true
-            }
-            return allocated || false
-        }, false)
-    }
+    const lazy = curry(makeLazy)(pool, makeContext, poolSize)
+    const attemptAllocation = opt.eager
+        ? () => {
+              return free
+                  ? allocator(free) || true
+                  : Object.keys(pool).reduce((allocated, id) => {
+                        if (!allocated && pool[id].free) {
+                            allocated = allocator(id) || true
+                        }
+                        return allocated
+                    }, false)
+          }
+        : curry(makeLazyConnector)(pool, lazy, allocator)
 
     const queueAllocationAttempt = () => {
         const int = setInterval(() => {
             if (attemptAllocation()) {
-                clearInterval(int);
+                clearInterval(int)
             }
         }, 1)
     }
-    queue.on('new job', queueAllocationAttempt)
+    q.on('new job', queueAllocationAttempt)
 
-    return {
-        obtain: (req, res) => queue.push({ req, res })
-    }
+    return (req, res) => q.push({ req, res })
 }

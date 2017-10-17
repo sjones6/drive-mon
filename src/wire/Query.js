@@ -63,7 +63,6 @@ Query.prototype.incrementRequestId = function() {
 //
 // Uses a single allocated buffer for the process, avoiding multiple memory allocations
 Query.prototype.toBinary = function() {
-    console.log(`request id: ${this.requestId}`)
     var self = this
     var buffers = []
     var projection = null

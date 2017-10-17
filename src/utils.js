@@ -14,5 +14,9 @@ const retrieveBSON = function() {
 }
 
 module.exports = {
+    pipe: require('./pipe'),
+    curry: require('./curry'),
+    queue: require('./queue'),
+    range: require('./range'),
     retrieveBSON
 }
